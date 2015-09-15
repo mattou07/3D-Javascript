@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+
+<html>
+
+    <head>
+        <title>Coursework template</title>
+        <script type="text/javascript" src="../libs/three.js"></script>
+        <script type="text/javascript" src="../libs/jquery-1.9.0.js"></script>
+        <script type="text/javascript" src="../libs/stats.js"></script>
+        <script type="text/javascript" src="../libs/dat.gui.js"></script>
+        <script type="text/javascript" src="../libs/keypress.js"></script>
+        <script type="text/javascript" src="../libs/chroma.js"></script>
+        <style>
+            body{
+                /* set margin to 0 and overflow to hidden, to go fullscreen */
+                margin: 0;
+                overflow: hidden;
+            }
+        </style>
+    </head>
+    <body>
+
+        <div id="Stats-output">
+        </div>
+        <!-- Div which will hold the Output -->
+        <div id="WebGL-output">
+        </div>
+
+        <!-- Javascript code that runs our Three.js examples -->
+        <script type="text/javascript">
+
+            // once everything is loaded, we run our Three.js stuff.
+            $(function () {
+
+                var stats = initStats();
+
+                // create a scene, that will hold all our elements such as objects, cameras and lights.
+                var scene = new THREE.Scene();
+
+                // create a render and set the size
+                var renderer = new THREE.WebGLRenderer();
+
+                renderer.setClearColor(0xEEEEEE, 1.0);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.shadowMapEnabled = true;
+                renderer.autoClear = false;
+
+                //var controller = new THREE.TrackballControls(camera);
+
+                //=====================================Environment Textures================================================
+                //Code taken from tutorials
+                //Creat our cube map which gives us our background
+                function createCubeMap(name) {
+
+                    var path = "../assets/textures/cubemap/" + name + "/";
+                    var format = '.jpg';
+                    var urls = [
+                        path + 'posx' + format, path + 'negx' + format,
+                        path + 'posy' + format, path + 'negy' + format,
+                        path + 'posz' + format, path + 'negz' + format
+                    ];
+
+                    var textureCube = THREE.ImageUtils.loadTextureCube(urls, new THREE.CubeReflectionMapping());
+                    return textureCube;
+                }
+
+                var textureCube = createCubeMap("maskonaive2");
+                var shader = THREE.ShaderLib[ "cube" ];
+                shader.uniforms[ "tCube" ].value = textureCube;
+                var material = new THREE.ShaderMaterial({
+                    fragmentShader: shader.fragmentShader,
+                    vertexShader: shader.vertexShader,
+                    uniforms: shader.uniforms,
+                    depthWrite: false,
+                    side: THREE.BackSide
+                });
+
+                var cubeMesh = new THREE.Mesh(new THREE.CubeGeometry(500, 500, 500), material);
+                scene.add(cubeMesh);
+
+                //========================================================================================
+
+                // create the ground plane
+                var groundGeometry = new THREE.CircleGeometry(200, 40);
+                var groundMaterial = new THREE.MeshLambertMaterial({color: 0xffffff});
+                var ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.receiveShadow = true;
+
+                // rotate and position the plane
+                ground.rotation.x = -0.5 * Math.PI;
+
+                // add the plane to the scene
+                scene.add(ground);
+
+                //==========================================
+                //Group Definitions
+                var Robot = new THREE.Object3D();
+
+                var Head = new THREE.Object3D();
+                var LowerBody = new THREE.Object3D();
+
+                var Legs = new THREE.Object3D();
+                var Torso = new THREE.Object3D();
+                //Mini gun groups
+                //Left arm
+                var MiniGunWep = new THREE.Object3D();
+                //Right arm
+                var MiniGunWep1 = new THREE.Object3D();
+                //========================================
+
+                //ROBOT PARTS
+                //===========================================================
+                //=========================Legs and Feet==================================  
+                //Material and Geometry definitions
+                var LowerLegMaterial = new THREE.MeshLambertMaterial({color: 0x00FF00});
+                var LowerLegGeo = new THREE.CylinderGeometry(0.25, 0.5, 6);
+                var FootMaterial = new THREE.MeshLambertMaterial({color: 0x0000FF});
+                var footGeo = new THREE.CubeGeometry(4, 1, 1);
+                var LegArray = [];
+                var FeetArray = [];
+                //For loop to create feet and legs
+                for (var i = 0; i < 2; ++i) {
+                    LegArray[i] = new THREE.Mesh(LowerLegGeo, LowerLegMaterial);
+                    LegArray[i].castShadow = true;
+                    FeetArray[i] = new THREE.Mesh(footGeo, FootMaterial);
+                    FeetArray[i].castShadow = true;
+                    if (i === 0) {
+                        //Left legs and foot
+                        LegArray[i].position.y = 4;
+                        LegArray[i].position.z = -2;
+                        FeetArray[i].position.z = 2;
+                        FeetArray[i].position.y = 1;
+                    } else {
+                        //right legs and foot
+                        LegArray[i].position.y = 4;
+                        LegArray[i].position.z = 2;
+                        FeetArray[i].position.z = -2;
+                        FeetArray[i].position.y = 1;
+                    }
+                    //Add our feet and leg to the legs group
+                    Legs.add(FeetArray[i]);
+                    Legs.add(LegArray[i]);
+                }
+
+                //=========================END Legs==================================
+                //=========================HIP Joint==================================
+                //Creat our hip joint
+                var hipgeo = new THREE.CylinderGeometry(0.5, 0.5, 6);
+                var hipjoint = new THREE.Mesh(hipgeo, LowerLegMaterial);
+                hipjoint.castShadow = true;
+                hipjoint.rotation.x = 0.5 * Math.PI;
+                hipjoint.position.y = 7;
+                LowerBody.add(hipjoint);
+
+                //============================END HIP===============================
+                //=========================TORSO/UpperBody Including head==================================
+                //Material is used in other groups too
+                var LowerBodyMaterial = new THREE.MeshLambertMaterial({color: 0xFF0000});
+                var ChestGeo = new THREE.CubeGeometry(6, 2, 1);
+                var Chest = new THREE.Mesh(ChestGeo, LowerBodyMaterial);
+                Chest.castShadow = true;
+                Chest.rotation.z = 0.5 * Math.PI;
+                Chest.position.z = 0;
+                Chest.position.y = 2;
+                Torso.add(Chest);
+                //===============================Upper Body===================================
+                //Collerbone or shoulder 
+                var CollerboneGeo = new THREE.CubeGeometry(10, 1, 2);
+                var Collerbone = new THREE.Mesh(CollerboneGeo, LowerBodyMaterial);
+                Collerbone.castShadow = true;
+                Collerbone.rotation.y = 0.5 * Math.PI;
+                Collerbone.position.y = 5;
+                Torso.add(Collerbone);
+                //Our shiny material for shiny objects
+                var shinyMaterial = new THREE.MeshPhongMaterial({});
+                //sets the surface to reflect the surounding environment from the texture cube
+                shinyMaterial.envMap = textureCube;
+                //=============================Neck================
+                //Creat our spinning neck piece
+                var NeckGeo = new THREE.CubeGeometry(4, 1, 1);
+                var Neck = new THREE.Mesh(NeckGeo, shinyMaterial);
+                Neck.castShadow = true;
+                Neck.rotation.x = 0.5 * Math.PI;
+                Neck.rotation.z = 0.5 * Math.PI;
+                Neck.position.z = 0;
+                Neck.position.y = 7;
+                Torso.add(Neck);
+
+                //====================================ARMS===========================================
+                //Add and position our left arm rotation group
+                var ArmRotationGroupLeft = new THREE.Object3D();
+                ArmRotationGroupLeft.position.y = 5;
+                ArmRotationGroupLeft.rotation.z = 0.5 * Math.PI;
+                //Add and position our right arm rotation group
+                var ArmRotationGroupRight = new THREE.Object3D();
+                ArmRotationGroupRight.position.y = 5;
+                ArmRotationGroupRight.rotation.z = 0.5 * Math.PI;
+                //Geometry fro arms
+                var ArmsGeo = new THREE.CubeGeometry(6, 1, 1);
+                //Geometry for arm joints
+                var ArmJointGeometry = new THREE.SphereGeometry(1.5, 20, 20);
+                //For loop arrays
+                var ArmArray = [];
+                var ArmJointArray = [];
+
+                for (var i = 0; i < 2; ++i) {
+                    ArmArray[i] = new THREE.Mesh(ArmsGeo, LowerBodyMaterial);
+                    ArmArray[i].castShadow = true;
+                    ArmJointArray[i] = new THREE.Mesh(ArmJointGeometry, shinyMaterial);
+                    ArmJointArray[i].castShadow = true;
+                    if (i === 0) {
+                        //Left arm and joint
+                        ArmArray[i].rotation.z = 0.5 * Math.PI;
+                        ArmArray[i].position.z = 5;
+                        ArmArray[i].position.x = 0;
+                        ArmArray[i].position.y = -3;
+                        ArmJointArray[i].rotation.z = 0.5 * Math.PI;
+                        ArmJointArray[i].position.z = 5;
+                        ArmJointArray[i].position.x = 0;
+                        ArmJointArray[i].position.y = 0;
+                        ArmRotationGroupLeft.add(ArmArray[i]);
+                        ArmRotationGroupLeft.add(ArmJointArray[i]);
+                    } else {
+                        //right arm and joint
+                        ArmArray[i].rotation.z = 0.5 * Math.PI;
+                        ArmArray[i].position.z = -5;
+                        ArmArray[i].position.x = 0;
+                        ArmArray[i].position.y = -3;
+                        ArmJointArray[i].rotation.z = 0.5 * Math.PI;
+                        ArmJointArray[i].position.z = -5;
+                        ArmJointArray[i].position.x = 0;
+                        ArmJointArray[i].position.y = 0;
+                        ArmRotationGroupRight.add(ArmArray[i]);
+                        ArmRotationGroupRight.add(ArmJointArray[i]);
+                    }
+                }
+                //Create our mini guns with 4 barrels
+                var MinigunGeo = new THREE.CylinderGeometry(0.5, 0.5, 6);
+                var MiniGun = [];
+                //set to 4 for 4 barrels
+                for (var i = 0; i < 4; ++i) {
+                    MiniGun[i] = new THREE.Mesh(MinigunGeo, shinyMaterial);
+                    MiniGun[i].castShadow = true;
+
+                    if (i % 2 === 0) { // i = 0 or 2
+                        MiniGun[i].position.x = .5;
+                    } else { // i = 1 or 3
+                        MiniGun[i].position.x = -.5;
+                    }
+                    MiniGun[i].position.y = 2.5;
+                    if (i < 2) { // i = 0 or 1
+                        MiniGun[i].position.z = .5;
+                    } else { // i = 2 or 3
+                        MiniGun[i].position.z = -.5;
+                    }
+                    MiniGunWep.add(MiniGun[i]);
+                }
+
+                //Create our mini guns with 4 barrels
+                //set to 4 for 4 barrels
+                for (var i = 0; i < 4; ++i) {
+                    MiniGun[i] = new THREE.Mesh(MinigunGeo, shinyMaterial);
+                    MiniGun[i].castShadow = true;
+
+                    //Fingers[i].rotation.z = 0.5 * Math.PI;
+                    if (i % 2 === 0) { // i = 0 or 2
+                        MiniGun[i].position.x = .5;
+                    } else { // i = 1 or 3
+                        MiniGun[i].position.x = -.5;
+                    }
+                    MiniGun[i].position.y = 2.5;
+                    if (i < 2) { // i = 0 or 1
+                        MiniGun[i].position.z = .5;
+                    } else { // i = 2 or 3
+                        MiniGun[i].position.z = -.5;
+                    }
+                    MiniGunWep1.add(MiniGun[i]);
+                }
+
+                //Position our mini gun group
+                //Right Gun
+                MiniGunWep1.position.x = -1.7;
+                MiniGunWep1.rotation.z = 0.5 * Math.PI;
+                MiniGunWep1.position.x = -1;
+                MiniGunWep1.position.z = -5;
+                MiniGunWep1.position.y = -5.5;
+                ArmRotationGroupRight.add(MiniGunWep1);
+                //Left Gun
+                MiniGunWep.rotation.z = 0.5 * Math.PI;
+                MiniGunWep.position.x = -1;
+                MiniGunWep.position.z = 5;
+                MiniGunWep.position.y = -5.5;
+                ArmRotationGroupLeft.add(MiniGunWep);
+
+                //====================================END ARMS===========================================
+
+                //=====================HEAD =====================================================
+                //Create the textures for the head
+                var plasterTexture = THREE.ImageUtils.loadTexture("../assets/textures/general/plaster.jpg");
+                var plasterNormalMap = THREE.ImageUtils.loadTexture("../assets/textures/general/plaster-normal.jpg");
+
+                var metalFloorTexture = THREE.ImageUtils.loadTexture("../assets/textures/general/metal-floor.jpg");
+                var metalFloorNormalMap = THREE.ImageUtils.loadTexture("../assets/textures/general/metal-floor-normal.jpg");
+
+                var cubeMaterial = new THREE.MeshPhongMaterial();
+                cubeMaterial.map = metalFloorTexture;
+                cubeMaterial.normalMap = metalFloorNormalMap;
+                //Create our head geometry
+                var HeadGeo = new THREE.CubeGeometry(4, 4, 4);
+                //Create our head mesh
+                var BlockFace = new THREE.Mesh(HeadGeo, cubeMaterial);
+
+                BlockFace.castShadow = true;
+                BlockFace.rotation.x = 0.5 * Math.PI;
+                BlockFace.rotation.z = 0.5 * Math.PI;
+                BlockFace.position.z = 0;
+                BlockFace.position.y = 9.6;
+                Head.add(BlockFace);
+                //Create our pink nose
+                var NoseMaterial = new THREE.MeshLambertMaterial({color: 0xFF1493});
+                var NoseGeo = new THREE.CubeGeometry(1, 1, 1);
+                var Nose = new THREE.Mesh(NoseGeo, NoseMaterial);
+                Nose.castShadow = true;
+                Nose.rotation.x = 0.5 * Math.PI;
+                Nose.rotation.z = 0.5 * Math.PI;
+                Nose.position.x = -2;//leftLowerLeg.position.z+2.5;
+                Nose.position.y = BlockFace.position.y;
+                Head.add(Nose);
+                //Create the Geo for the smaller nose
+                var NoseGeo = new THREE.CubeGeometry(0.25, 0.25, 1);
+
+                var NoseMaterial1 = new THREE.MeshLambertMaterial({color: 0xFF69B4});
+                var Nose1 = new THREE.Mesh(NoseGeo, NoseMaterial1);
+                Nose1.position.y = 0.8;
+                Nose.add(Nose1);
+
+                //==============================EYES=======================================
+                //Create our materials and geometry for eyes and pupil
+                var EyesMaterial = new THREE.MeshLambertMaterial({color: 0xFFFFFF});
+                var EyesGeo = new THREE.CubeGeometry(0.75, 0.25, 0.5);
+
+                var PupilMaterial = new THREE.MeshLambertMaterial({color: 0x00000});
+                var PupilGeo = new THREE.CubeGeometry(0.25, 0.25, 0.25);
+                //Used in keybindings===============================
+                //Crazy eyes
+                //Define our emissive colours for the eyes in different modes
+                var Crazyscale = chroma.scale(['orangered', 'gold']);
+                //Normal Eyes
+                var Normscale = chroma.scale(['white', 'white']);
+                //Default look for eyes before crazy mode
+                EyesMaterial.emissive = new THREE.Color(Normscale(Math.random()).hex());
+                //==============================================================
+                //Create our Eye and Pupil meshes for the block face
+                var Eyes = [];
+                var Pupil = [];
+
+                for (var i = 0; i < 2; ++i) {
+                    Eyes[i] = new THREE.Mesh(EyesGeo, EyesMaterial)
+
+                    Eyes[i].castShadow = true;
+                    Pupil[i] = new THREE.Mesh(PupilGeo, PupilMaterial);
+                    Pupil[i].castShadow = true;
+                    Eyes[i].rotation.x = 0.5 * Math.PI;
+                    Eyes[i].rotation.z = 0.5 * Math.PI;
+                    Eyes[i].position.x = -2;
+                    Eyes[i].position.y = BlockFace.position.y + 1;
+                    Pupil[i].rotation.x = 0.5 * Math.PI;
+                    Pupil[i].rotation.z = 0.5 * Math.PI;
+                    Pupil[i].position.x = Eyes[i].position.x - 0.1;
+                    Pupil[i].position.y = Eyes[i].position.y;
+                    if (i === 0) {
+                        //Left eye and pupil
+                        Eyes[i].position.z = 1.5;
+                        Pupil[i].position.z = Eyes[i].position.z;
+
+                    } else {
+                        //right eye and pupil
+                        Eyes[i].position.z = -1.5;
+                        Pupil[i].position.z = Eyes[i].position.z;
+                    }
+                    Head.add(Eyes[i]);
+                    Head.add(Pupil[i]);
+                }
+                Torso.add(Head);
+
+                //==============================END HEAD=======================================
+                //=========================END Upper Body==================================
+                //=========================END TORSO==================================
+
+                //==========================Lights===========================================
+                //Lights in the scene
+                // add a small sphere simulating the pointlight
+                var sphereLightGeometry = new THREE.SphereGeometry(1, 20, 20);
+                var sphereLight = new THREE.SphereGeometry(0.2);
+
+                var sphereLightMaterial = new THREE.MeshPhongMaterial({color: 0xac6c25, emissive: 0xac3d25});
+                var sphereLightMesh = new THREE.Mesh(sphereLight, sphereLightMaterial);
+                sphereLightMesh.position.x = 6;
+                //Neck.add(pointLight);
+                var pointLight = new THREE.PointLight("#ff5808");
+                pointLight.intensity = 1;
+                pointLight.position.x = 6;
+                //Neck.add(pointLight);
+
+                var directionalLight = new THREE.DirectionalLight("#ccffcc");
+                directionalLight.position.x = 10; //new THREE.Vector3(5, 5, 0);
+                directionalLight.castShadow = true;
+                directionalLight.shadowCameraNear = 2;
+                directionalLight.shadowCameraFar = 200;
+                directionalLight.shadowCameraLeft = -50;
+                directionalLight.shadowCameraRight = 50;
+                directionalLight.shadowCameraTop = 50;
+                directionalLight.shadowCameraBottom = -50;
+                directionalLight.shadowMapHeight = 1024;
+                directionalLight.shadowMapWidth = 1024;
+                directionalLight.target = Robot;
+                directionalLight.distance = 100;
+                directionalLight.intensity = 1;
+                //We add our light to orbit with the neck
+                Neck.add(directionalLight);
+                //Create our companion to be where the light is
+                var spherePointLightMesh = new THREE.Mesh(sphereLightGeometry, shinyMaterial);
+                spherePointLightMesh.position = directionalLight.position;
+                Neck.add(spherePointLightMesh);
+
+                //==========================================================================
+
+                //===========================ROTATION GROUPS================================
+                //Used to debug Object3D group positions
+                //var DebugColour = new THREE.MeshLambertMaterial({color: 0x666666});
+
+                //Adjust position of Groups to set center of objects in the correct places
+                //Allows proper rotation without having to change the point of rotation for shapes
+                var LegHipRotationGroup = new THREE.Object3D();
+                //positions for correct orientation for hip rotation
+                LegHipRotationGroup.position.y = 7;
+                Legs.position.y = -7;
+                var UpperBodyRotationGroup = new THREE.Object3D();
+                //positions for correct orientation for chest rotation
+                UpperBodyRotationGroup.rotation.z = -0.5 * Math.PI;
+                UpperBodyRotationGroup.position.y = 7;
+
+
+
+                //===========================END ROTATION GROUPS================================
+
+                //Build our robot by linking the groups together
+                UpperBodyRotationGroup.add(Torso);
+                UpperBodyRotationGroup.add(ArmRotationGroupLeft);
+                UpperBodyRotationGroup.add(ArmRotationGroupRight);
+                Robot.add(UpperBodyRotationGroup);
+                Robot.add(LowerBody);
+                LegHipRotationGroup.add(Legs);
+                Robot.add(LegHipRotationGroup);
+                //Add built robot to scene
+                scene.add(Robot);
+
+                //==========================================Camera=============================================
+                // create a camera, which defines where we're looking at.
+                var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+                // position and point the camera to the center of the scene
+                camera.position.x = -30;
+                camera.position.y = 40;
+                camera.position.z = 30;
+                //Create an orbit trajectory for our camera
+                var orbitGroup = new THREE.Object3D();
+                scene.add(orbitGroup);
+                orbitGroup.add(camera);
+                //==========================================End Camera=============================================
+
+                // add subtle ambient lighting
+                var ambientLight = new THREE.AmbientLight(0x0c0c0c);
+                scene.add(ambientLight);
+
+                // add spotlight for the shadows
+                var spotLight = new THREE.SpotLight(0xffffff);
+                spotLight.position.set(-40, 60, -10);
+                spotLight.castShadow = true;
+                scene.add(spotLight);
+
+                // add the output of the renderer to the html element
+                $("#WebGL-output").append(renderer.domElement);
+
+
+                //Controls used to help with changing values
+                var controls = new function () {
+                    this.LegrotationSpeed = 0.02;
+                    this.NeckrotationSpeed = 0.02;
+                    this.headposition = 0.00;
+                    this.chestposition = 0;
+                    this.leftArmPos = 0;
+                    this.rightArmPos = 0;
+                    this.ForwardSpeed = -0.4
+                    this.BackwardSpeed = 0.1
+                    this.MiniGunRot = 0.0;
+
+                    this.height = camera.position.y;
+                    this.orbitAngle = 0;
+
+                };
+                //Robot Interface controls
+                var gui = new dat.GUI();
+                gui.add(controls, 'NeckrotationSpeed', 0, 0.5).listen();
+                gui.add(controls, 'chestposition', -1.5, 1.5).listen();
+                gui.add(controls, 'headposition', -1.5, 1.5).listen();
+                gui.add(controls, 'leftArmPos', -1.5, 1.5).listen();
+                gui.add(controls, 'rightArmPos', -1.5, 1.5).listen();
+                gui.add(controls, 'ForwardSpeed', -1.5, 0);
+                gui.add(controls, 'BackwardSpeed', 0, 0.7);
+                gui.add(controls, 'height').listen();
+                gui.add(controls, 'orbitAngle').listen();
+
+                //Update the camera positions in dat GUI
+                function updateGUI() {
+                    controls.height = camera.position.y;
+                    controls.orbitAngle = orbitGroup.rotation.y * 180 / Math.PI;
+                }
+
+
+                render();
+
+                function render() {
+                    stats.update();
+                    //All animations with values fed from the control function
+                    LegHipRotationGroup.rotation.z = controls.LegrotationSpeed;
+                    UpperBodyRotationGroup.rotation.z = controls.chestposition;
+                    Neck.rotation.z += controls.NeckrotationSpeed;
+                    Head.rotation.y = controls.headposition;
+                    ArmRotationGroupRight.rotation.z = controls.rightArmPos;
+                    ArmRotationGroupLeft.rotation.z = controls.leftArmPos;
+
+                    MiniGunWep.rotation.x += controls.MiniGunRot;
+                    MiniGunWep1.rotation.x += controls.MiniGunRot;
+                    //Allow camera to follow robot
+                    camera.lookAt(Robot.position);
+                    // render using requestAnimationFrame
+
+                    requestAnimationFrame(render);
+                    renderer.render(scene, camera);
+                }
+
+                //=========================KeyPressDefintions=================================  
+                //Advanced keyboard controls
+                var keypress = new window.keypress.Listener();
+                var my_combos = keypress.register_many([
+                    {
+                        //W key commands
+                        "keys": "w", //Our keyboard button
+                        //
+                        "is_exclusive": true,
+                        "on_keydown": function () {
+                            //When key is pressed down
+                            updateGUI();
+                            //Set head straight
+                            controls.headposition = 0;
+                            //Start rotating legs
+                            controls.LegrotationSpeed += 0.5;
+                            //Lean the upper body back
+                            if (controls.chestposition >= -0.5 || controls.chestposition <= 0.5) {
+                                controls.chestposition = -0.5;
+                            } else {
+                                controls.chestposition += -0.15;
+                            }
+                            //Rotate arms in bi directional ways
+                            controls.leftArmPos += -0.15;
+                            controls.rightArmPos += 0.15;
+                            //Move robot forward
+                            Robot.translateX(controls.ForwardSpeed);
+                        },
+                        //When W key is let go
+                        "on_keyup": function (e) {
+                            //Stop leg animation
+                            controls.LegrotationSpeed = 0;
+                            //Set back straight
+                            controls.chestposition = 0;
+                            //Put arms straight
+                            controls.leftArmPos = 0;
+                            controls.rightArmPos = 0;
+                        }
+                    },
+                    //On keydown and on keyup won't be repeated since its 
+                    //Explained above
+                    {
+                        //when s is pressed
+                        "keys": "s",
+                        "is_exclusive": true,
+                        "on_keydown": function (event) {
+                            //Set head straight
+                            controls.headposition = 0;
+                            //legs rotate backwards
+                            controls.LegrotationSpeed += -1;
+                            //Move robot back
+                            Robot.translateX(controls.BackwardSpeed);
+                            //Move arms faster than forward and in opposite directions
+                            controls.leftArmPos += 0.5;
+                            controls.rightArmPos += -0.5;
+                        },
+                        "on_keyup": function (e) {
+                            //Reset limbs
+                            controls.LegrotationSpeed = 0;
+                            controls.leftArmPos = 0;
+                            controls.rightArmPos = 0;
+                        }
+
+                    },
+                    {
+                        "keys": "a",
+                        "is_exclusive": true,
+                        "on_keydown": function (event) {
+                            //Turn head to a max positon
+                            //Turns head left
+                            Robot.rotation.y += 0.15;
+                            //Maxes out position of head movement
+                            if (controls.headposition >= -1 || controls.headposition <= 1) {
+                                controls.headposition = 1;
+                            } else {
+                                controls.headposition += 0.0001;
+                            }
+
+                        },
+                        "on_keyup": function (e) {
+                            //Does nothing so the head remains facing left until W or S is pressed
+                        }
+
+                    },
+                    {
+                        "keys": "d",
+                        "is_exclusive": true,
+                        "on_keydown": function (event) {
+                            //Turns head right
+                            Robot.rotation.y -= 0.15;
+
+                            if (controls.headposition >= -1 || controls.headposition <= 1) {
+                                controls.headposition = -1;
+                            } else {
+                                controls.headposition += -0.0001;
+                            }
+                        },
+                        "on_keyup": function (e) {
+
+                        }
+
+                    }
+
+                    ,
+                    {
+                        //Acitvate mini guns
+                        "keys": "q",
+                        "is_exclusive": true,
+                        "on_keydown": function (event) {
+                            //Rotate gun speed
+                            controls.MiniGunRot = 0.5;
+                            //Change colour of pupils
+                            PupilMaterial.color = new THREE.Color(0xFF0000);
+                            //Chage colour of eyes
+                            EyesMaterial.emissive = new THREE.Color(Crazyscale(Math.random()).hex());
+                            //Increase compainion speed
+                            controls.NeckrotationSpeed = 0.2;
+                            //Set light to red
+                            directionalLight.color = new THREE.Color(0xFF0000);
+                            //Change body material to terminator mode (grey colour)
+                            LowerBodyMaterial.color = new THREE.Color(0x464646);
+                            LowerLegMaterial.color = new THREE.Color(0x464646);
+                            FootMaterial.color = new THREE.Color(0x464646);
+
+                        },
+                        "on_keyup": function (event) {
+                            //Stop rotating guns on key up
+                            controls.MiniGunRot = 0.0;
+                            //Reset robot's look back to default
+                            PupilMaterial.color = new THREE.Color(0x000000);
+                            EyesMaterial.color = new THREE.Color(0xFFFFFF);
+                            EyesMaterial.emissive = new THREE.Color(Normscale(Math.random()).hex());
+                            controls.NeckrotationSpeed = 0.02;
+                            directionalLight.color = new THREE.Color(0xccffcc);
+                            LowerBodyMaterial.color = new THREE.Color(0xFF0000);
+                            LowerLegMaterial.color = new THREE.Color(0x00FF00);
+                            FootMaterial.color = new THREE.Color(0x0000FF);
+                        }
+
+                    },
+                    {
+                        //Rotate camera left
+                        "keys": "left",
+                        "is_exclusive": true,
+                        "on_keydown": function (event) {
+                            orbitGroup.rotation.y -= 0.02;
+                            updateGUI();
+                        }
+
+                    },
+                    {
+                        //Rotate camera right
+                        "keys": "right",
+                        "is_exclusive": true,
+                        "on_keydown": function (event) {
+                            orbitGroup.rotation.y += 0.02;
+                            updateGUI();
+                        }
+
+                    },
+                    {
+                        //Adjust the height of camera by going up
+                        "keys": "up",
+                        "is_exclusive": true,
+                        "on_keydown": function (event) {
+                            camera.position.y += 0.5;
+                            if (camera.position.y > 45) {
+                                camera.position.y = 45;
+                            }
+                            updateGUI();
+                        }
+
+                    },
+                    {
+                        //Adjust the height of camera by going down
+                        "keys": "down",
+                        "is_exclusive": true,
+                        "on_keydown": function (event) {
+                            camera.position.y -= 0.5;
+                            if (camera.position.y < 10) {
+                                camera.position.y = 10;
+                            }
+                            updateGUI();
+                        }
+
+                    }
+
+
+                ]);
+
+
+                function initStats() {
+
+                    var stats = new Stats();
+
+                    stats.setMode(0); // 0: fps, 1: ms
+
+                    // Align top-left
+                    stats.domElement.style.position = 'absolute';
+                    stats.domElement.style.left = '0px';
+                    stats.domElement.style.top = '0px';
+
+                    $("#Stats-output").append(stats.domElement);
+
+                    return stats;
+                }
+            });
+
+        </script>
+    </body>
+</html>
